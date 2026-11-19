@@ -1,0 +1,1007 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>机いす移動プランナー</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap">
+<style>
+/* Layout: 黒板色のヘッダー帯 + 手順タブ + 作業用の表。低規格=木目色、高規格=スチール色で常に区別する */
+:root{
+  --bg:#EEF2F0; --surface:#FFFFFF; --sunken:#F6F8F7; --ink:#1D2926; --muted:#5A6965; --line:#D3DCD8;
+  --board:#24493C; --board-ink:#F0F5F2; --board-muted:#B9CDC4;
+  --accent:#2C6A4E; --accent-ink:#FFFFFF; --accent-soft:#DCEBE3;
+  --wood:#9A5B22; --wood-soft:#F4E6D6; --steel:#2D5A86; --steel-soft:#DDE8F3;
+  --plus:#8A5A00; --plus-soft:#FBEFD2; --minus:#B3261E; --minus-soft:#FBE1DE;
+  --font:"BIZ UDPGothic","Yu Gothic UI","Yu Gothic","Meiryo","Hiragino Sans",system-ui,sans-serif;
+  --r:8px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#121816; --surface:#1A2320; --sunken:#151D1A; --ink:#E3ECE8; --muted:#9BABA5; --line:#2E3B37;
+  --board:#1C3A2F; --board-ink:#E9F2ED; --board-muted:#9DB8AC;
+  --accent:#62B58C; --accent-ink:#0E1A15; --accent-soft:#1F3A2E;
+  --wood:#DDA066; --wood-soft:#3A2A1B; --steel:#86B0DB; --steel-soft:#1C2E40;
+  --plus:#E8B656; --plus-soft:#3A2F14; --minus:#F28B82; --minus-soft:#3E1F1C;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121816; --surface:#1A2320; --sunken:#151D1A; --ink:#E3ECE8; --muted:#9BABA5; --line:#2E3B37;
+  --board:#1C3A2F; --board-ink:#E9F2ED; --board-muted:#9DB8AC;
+  --accent:#62B58C; --accent-ink:#0E1A15; --accent-soft:#1F3A2E;
+  --wood:#DDA066; --wood-soft:#3A2A1B; --steel:#86B0DB; --steel-soft:#1C2E40;
+  --plus:#E8B656; --plus-soft:#3A2F14; --minus:#F28B82; --minus-soft:#3E1F1C;
+  color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.6}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px))}
+h1,h2,h3{text-wrap:balance;line-height:1.35;margin:0}
+.num,td.n,input[type=number]{font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+/* header */
+.board{background:var(--board);color:var(--board-ink)}
+.board .wrap{padding-block:18px 0}
+.board .eyebrow{font-size:12px;letter-spacing:.08em;color:var(--board-muted)}
+.board h1{font-size:22px;font-weight:700;margin-top:2px}
+.board .sub{color:var(--board-muted);font-size:13px;margin-top:4px}
+.tabs{display:flex;gap:4px;margin-top:16px;overflow-x:auto;scrollbar-width:none}
+.tabs button{border:0;background:transparent;color:var(--board-muted);padding:10px 14px;border-radius:var(--r) var(--r) 0 0;cursor:pointer;white-space:nowrap;display:flex;gap:8px;align-items:center;font-weight:700}
+.tabs button .no{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;border:1.5px solid currentColor;font-size:12px}
+.tabs button[aria-selected="true"]{background:var(--bg);color:var(--ink)}
+.tabs button:hover:not([aria-selected="true"]){color:var(--board-ink)}
+
+main .wrap{padding-block:20px 60px}
+section[hidden]{display:none}
+.lead{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between;margin-bottom:14px}
+.lead h2{font-size:19px}
+.lead p{margin:4px 0 0;color:var(--muted);max-width:68ch}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+.btn{border:1px solid var(--line);background:var(--surface);padding:8px 14px;border-radius:var(--r);cursor:pointer;font-weight:700;font-size:14px}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.small{padding:4px 10px;font-size:13px}
+.btn.danger{color:var(--minus)}
+.btn.icon{padding:3px 8px;font-weight:400}
+.note{background:var(--plus-soft);border-radius:var(--r);padding:10px 14px;margin:0 0 14px;font-size:14px}
+.note.info{background:var(--accent-soft)}
+.note b{font-weight:700}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:16px;min-width:0}
+.panel h3{font-size:16px;margin-bottom:10px}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+/* tables */
+table{border-collapse:collapse;width:100%}
+th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:middle}
+th{font-size:12px;color:var(--muted);font-weight:700;background:var(--sunken);white-space:nowrap}
+td.n,th.n{text-align:right}
+tr.floor-head td{background:var(--sunken);font-weight:700;color:var(--muted);font-size:13px;padding-top:10px}
+.edit input,.edit select{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:5px 7px;width:100%;min-width:0}
+.edit input[type=number]{width:64px;text-align:right}
+.edit td{padding:4px 4px}
+.edit .w-floor{width:62px}.edit .w-name{min-width:120px}.edit .w-memo{min-width:150px}
+.edit select{min-width:110px}
+.edit .gsep{border-left:2px solid var(--line)}
+.hint{font-size:12px;color:var(--muted);white-space:nowrap}
+.rowbtns{display:flex;gap:2px;white-space:nowrap}
+
+/* chips */
+.chip{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;font-weight:700;white-space:nowrap}
+.chip.low{background:var(--wood-soft);color:var(--wood)}
+.chip.high{background:var(--steel-soft);color:var(--steel)}
+.chip.mixed{background:linear-gradient(90deg,var(--wood-soft) 50%,var(--steel-soft) 50%);color:var(--ink)}
+.chip.none{background:var(--sunken);color:var(--muted);border:1px solid var(--line)}
+.chip.empty{background:var(--minus-soft);color:var(--minus)}
+.pm{font-weight:700;font-variant-numeric:tabular-nums}
+.pm.plus{color:var(--plus)} .pm.minus{color:var(--minus)} .pm.zero{color:var(--muted)}
+
+/* kids input */
+.kfloor{margin-bottom:18px}
+.kfloor h3{font-size:14px;color:var(--muted);margin:0 0 6px;letter-spacing:.04em}
+.krow{display:grid;grid-template-columns:minmax(150px,1.3fr) auto minmax(220px,1.4fr) minmax(200px,1.6fr);gap:10px 16px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px;margin-bottom:6px}
+.krow.pending{border-style:dashed}
+.krow .room b{font-size:17px;display:block}
+.krow .room small{color:var(--muted)}
+.kin{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.kin label{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--muted)}
+.kin input{width:76px;font-size:20px;font-weight:700;padding:4px 8px;border:2px solid var(--line);border-radius:6px;background:var(--surface);text-align:right}
+.kin input.sm{width:56px;font-size:15px;font-weight:400;border-width:1px}
+.kin input:focus{border-color:var(--accent)}
+.kstat{font-size:13px;display:grid;gap:2px}
+.kstat .muted{color:var(--muted)}
+.progress{display:flex;align-items:center;gap:10px;font-size:14px}
+.bar{width:160px;height:8px;border-radius:99px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent)}
+.others{color:var(--muted);font-size:13px}
+
+/* plan */
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
+.stat .k{font-size:12px;color:var(--muted)}
+.stat .v{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
+.stat .v small{font-size:13px;font-weight:400;color:var(--muted);margin-left:2px}
+.stat.bad{border-color:var(--minus);background:var(--minus-soft)}
+.stat.bad .v{color:var(--minus)}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+.mcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.mcard{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);overflow:hidden}
+.mcard header{padding:8px 12px;background:var(--sunken);display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap}
+.mcard header b{font-size:16px}
+.mcard header small{color:var(--muted)}
+.mcard ul{list-style:none;margin:0;padding:4px 12px 8px}
+.mcard li{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:6px 0;border-bottom:1px dashed var(--line)}
+.mcard li:last-child{border-bottom:0}
+.mcard .to{font-weight:700}
+.mcard .to small{font-weight:400;color:var(--muted)}
+.mcard .qty{font-weight:700;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.mcard .meta{grid-column:1/-1;font-size:12px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.adj{color:var(--steel);font-weight:700}
+.short li{margin-bottom:4px}
+.plan-table td{font-size:14px}
+.plan-table td.rem{white-space:pre-line;min-width:240px;font-size:13px}
+.plan-table input{border:1px solid var(--line);border-radius:6px;padding:3px 6px;width:90px;background:var(--surface)}
+.plan-table tr.total td{font-weight:700;background:var(--sunken)}
+.plan-table td.fl{font-weight:700;color:var(--muted);vertical-align:top;background:var(--sunken)}
+.plan-table .newname{font-weight:700}
+.plan-table .changed{color:var(--accent)}
+
+/* labels */
+.lbl-opts{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center}
+.lbl-opts label{display:flex;gap:6px;align-items:center}
+.lbl-opts select{border:1px solid var(--line);border-radius:6px;padding:5px 8px;background:var(--surface)}
+.lbl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin-top:14px}
+.lbl{border:2px solid var(--ink);border-radius:6px;padding:10px 12px;background:var(--surface);display:grid;gap:2px;align-content:start}
+.lbl .t{font-size:12px;color:var(--muted)}
+.lbl .dest{font-size:28px;font-weight:700;line-height:1.15}
+.lbl .nx{font-size:13px}
+.lbl .what{font-size:15px;font-weight:700;margin-top:4px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.lbl .from{font-size:12px;color:var(--muted);margin-top:4px}
+.lbl .x{font-size:20px}
+
+/* settings */
+.form{display:grid;grid-template-columns:140px minmax(0,1fr);gap:10px 14px;align-items:start}
+.form label{font-weight:700;font-size:14px;padding-top:6px}
+.form input,.form textarea,.form select{border:1px solid var(--line);border-radius:6px;padding:6px 9px;width:100%;background:var(--surface)}
+.form textarea{min-height:110px;resize:vertical}
+.rules td input{width:70px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;background:var(--surface)}
+.rules td select{border:1px solid var(--line);border-radius:6px;padding:4px 6px;background:var(--surface)}
+.confirm{margin-top:10px;padding:12px 14px;border:1px solid var(--minus);background:var(--minus-soft);border-radius:var(--r)}
+.confirm p{margin:0 0 8px}
+.pastebox{width:100%;min-height:90px;border:1px solid var(--line);border-radius:6px;padding:8px;background:var(--surface);font-family:ui-monospace,monospace;font-size:12px}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom, 0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:var(--r);font-size:14px;display:flex;gap:12px;align-items:center;z-index:20;max-width:calc(100% - 32px)}
+.toast button{background:transparent;border:1px solid currentColor;color:inherit;border-radius:6px;padding:2px 8px;cursor:pointer}
+.embed-only{display:none}
+body.embed .embed-only{display:revert}
+body.embed .file-only{display:none}
+
+#printArea{display:none}
+
+@media (max-width:860px){
+  .krow{grid-template-columns:1fr auto;}
+  .krow .kin,.krow .kstat{grid-column:1/-1}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .grid2{grid-template-columns:minmax(0,1fr)}
+  .form{grid-template-columns:minmax(0,1fr)}
+  .form label{padding-top:0}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ---------- 印刷 ---------- */
+@media print{
+  :root{--ink:#000;--muted:#333;--line:#888;--surface:#fff;--sunken:#eee;--bg:#fff}
+  body{background:#fff;color:#000;font-size:10.5pt}
+  body > *:not(#printArea){display:none!important}
+  #printArea{display:block!important}
+  .pp h1{font-size:15pt;text-align:center;margin-bottom:6pt}
+  .pp table{border-collapse:collapse;width:100%}
+  .pp th,.pp td{border:1px solid #555;padding:2pt 4pt;font-size:9pt;background:#fff;color:#000}
+  .pp th{background:#eee}
+  .pp .meta th{width:70pt;text-align:left}
+  .pp .grid td.rem{white-space:pre-line}
+  .pp h2{font-size:11pt;margin:10pt 0 4pt}
+  .pp .mlist{columns:2;column-gap:14pt;font-size:9pt}
+  .pp .mlist div{break-inside:avoid;margin-bottom:6pt}
+  .pp .notes{font-size:9pt;margin:0;padding-left:14pt}
+  .pp tr{break-inside:avoid}
+  .lpage{display:grid;break-after:page;gap:0}
+  .lpage:last-child{break-after:auto}
+  .lpage.n8{grid-template-columns:1fr 1fr;grid-template-rows:repeat(4,69mm)}
+  .lpage.n4{grid-template-columns:1fr 1fr;grid-template-rows:repeat(2,138mm)}
+  .lpage.n2{grid-template-columns:1fr;grid-template-rows:repeat(2,138mm)}
+  .plbl{border:1px dashed #777;padding:5mm 6mm;display:flex;flex-direction:column;justify-content:center;gap:2mm;overflow:hidden}
+  .plbl .t{font-size:9pt}
+  .plbl .dest{font-weight:700;line-height:1.1}
+  .n8 .plbl .dest{font-size:30pt} .n4 .plbl .dest{font-size:48pt} .n2 .plbl .dest{font-size:60pt}
+  .plbl .nx{font-size:12pt}
+  .plbl .what{font-size:15pt;font-weight:700}
+  .n4 .plbl .what,.n2 .plbl .what{font-size:22pt}
+  .plbl .from{font-size:10pt}
+}
+</style>
+</head>
+<body>
+
+<header class="board">
+  <div class="wrap">
+    <div class="eyebrow">年度末・新年度準備</div>
+    <h1 id="hdrTitle">机いす移動プランナー</h1>
+    <div class="sub" id="hdrSub"></div>
+    <nav class="tabs" role="tablist" aria-label="手順">
+      <button role="tab" id="tab-rooms" data-tab="rooms"><span class="no">1</span>教室と机・いす</button>
+      <button role="tab" id="tab-kids" data-tab="kids"><span class="no">2</span>児童数の入力</button>
+      <button role="tab" id="tab-plan" data-tab="plan"><span class="no">3</span>移動計画</button>
+      <button role="tab" id="tab-labels" data-tab="labels"><span class="no">4</span>貼り紙</button>
+      <button role="tab" id="tab-settings" data-tab="settings"><span class="no">5</span>設定・保存</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+<div class="wrap">
+
+<!-- 1 教室 -->
+<section id="sec-rooms" data-sec="rooms" hidden>
+  <div class="lead">
+    <div>
+      <h2>教室と、いまある机・いす</h2>
+      <p>今年度の教室ごとに、置いてある机・いすの数を入れます。来年度その部屋を何組が使うかも入れてください。学年から規格と高さが自動で決まります。</p>
+    </div>
+    <div class="actions"><button class="btn primary" id="addRoom">教室を追加</button></div>
+  </div>
+  <div class="note" id="sampleNote"><b>はじめに：</b>昨年度の計画表（令和７年度末）をもとに、今の教室名と机・いすの数を仮に入れてあります。数は昨年度の「来年度必要な数」です。<b>12月頃に実際に数えて直してください。</b>古いタイプの机・いすは数に入れません。</div>
+  <div class="panel scroll"><table class="edit" id="roomTable"></table></div>
+
+  <div class="lead" style="margin-top:22px">
+    <div>
+      <h3 style="font-size:17px">保管場所・新品</h3>
+      <p>余った机・いすの置き場所や、届いた新品の数です。不足する教室には、まず他の教室の余りを回し、それでも足りない分をここから出します。</p>
+    </div>
+    <div class="actions"><button class="btn" id="addStore">保管場所を追加</button></div>
+  </div>
+  <div class="panel scroll"><table class="edit" id="storeTable"></table></div>
+</section>
+
+<!-- 2 児童数 -->
+<section id="sec-kids" data-sec="kids" hidden>
+  <div class="lead">
+    <div>
+      <h2>来年度の児童数</h2>
+      <p>学級の児童数が決まったら入れてください。入れた教室から順に、机・いすの過不足が出ます。予備を置きたいときは「予備」に数を入れます。</p>
+    </div>
+    <div class="progress" id="kidsProgress"></div>
+  </div>
+  <div class="note info" style="display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center">
+    <span>全学級の予備を</span>
+    <input type="number" id="bulkSpare" min="0" value="0" style="width:64px;border:1px solid var(--line);border-radius:6px;padding:3px 6px;background:var(--surface)">
+    <span>台にする</span>
+    <button class="btn small" id="bulkSpareBtn">一括で設定</button>
+  </div>
+  <div id="kidsList"></div>
+</section>
+
+<!-- 3 計画 -->
+<section id="sec-plan" data-sec="plan" hidden>
+  <div class="lead">
+    <div>
+      <h2>移動計画</h2>
+      <p>余りは近い階の不足している教室へ回し、それでも余る分は保管場所へ運ぶように自動で組みます。高規格の机・いすは、行き先の学年に合わせて高さ調整の指示を付けます。</p>
+    </div>
+    <div class="actions">
+      <button class="btn primary file-only" id="printPlan">計画表を印刷</button>
+      <button class="btn file-only" id="csvPlan">Excel用に保存（CSV）</button>
+      <button class="btn" id="copyPlan">表をコピー（Excelに貼り付け）</button>
+    </div>
+  </div>
+  <div id="planWarn"></div>
+  <div class="stats" id="planStats"></div>
+  <div class="grid2">
+    <div class="panel scroll"><h3>規格ごとの数</h3><div id="planBalance"></div></div>
+    <div class="panel"><h3>足りない机・いす</h3><div id="planShort"></div></div>
+  </div>
+  <div class="panel">
+    <h3>移動の指示（運び出す教室ごと）</h3>
+    <div class="mcards" id="planMoves"></div>
+  </div>
+  <div class="panel scroll">
+    <h3>教室別一覧</h3>
+    <table class="plan-table" id="planTable"></table>
+  </div>
+</section>
+
+<!-- 4 貼り紙 -->
+<section id="sec-labels" data-sec="labels" hidden>
+  <div class="lead">
+    <div>
+      <h2>移動先の貼り紙</h2>
+      <p>机・いす1台に1枚ずつ貼る紙です。担任の先生が事前に貼って廊下に出しておけるよう、運び出す教室ごとに分けて印刷できます。</p>
+    </div>
+    <div class="actions"><button class="btn primary file-only" id="printLabels">貼り紙を印刷</button></div>
+  </div>
+  <div class="panel lbl-opts">
+    <label>運び出す教室 <select id="lblFrom"></select></label>
+    <label>大きさ <select id="lblSize"><option value="8">A4に8枚（ふつう）</option><option value="4">A4に4枚（大きめ）</option><option value="2">A4に2枚（特大）</option></select></label>
+    <label>枚数 <select id="lblMode"><option value="each">1台に1枚</option><option value="group">行き先ごとに1枚（台数入り）</option></select></label>
+    <span id="lblCount" class="hint"></span>
+  </div>
+  <p class="embed-only hint">印刷は、ダウンロードしたHTMLファイルをパソコンのブラウザで開くと使えます。</p>
+  <div class="lbl-grid" id="lblGrid"></div>
+</section>
+
+<!-- 5 設定 -->
+<section id="sec-settings" data-sec="settings" hidden>
+  <div class="lead"><div><h2>設定・保存</h2><p>計画表の見出しや注意事項、学年ごとの規格と高さ、データの保存を扱います。</p></div></div>
+  <div class="grid2">
+    <div class="panel">
+      <h3>計画表に載せる内容</h3>
+      <div class="form">
+        <label for="m-title">題名</label><input id="m-title" data-meta="title">
+        <label for="m-date">日時</label><input id="m-date" data-meta="date">
+        <label for="m-method">移動方法</label><input id="m-method" data-meta="method">
+        <label for="m-prep">準備</label><textarea id="m-prep" data-meta="prep" style="min-height:70px"></textarea>
+        <label for="m-notes">注意・その他</label><textarea id="m-notes" data-meta="notes"></textarea>
+        <label for="m-up">上りの階段</label><input id="m-up" data-meta="up">
+        <label for="m-down">下りの階段</label><input id="m-down" data-meta="down">
+      </div>
+    </div>
+    <div class="panel">
+      <h3>学年ごとの規格と高さ</h3>
+      <p class="hint" style="white-space:normal;margin-top:0">低規格の机・いすは4年生以上の高さにできないため、低規格と高規格の間では融通しません。高規格どうしは高さを変えて使い回します。</p>
+      <table class="rules" id="rulesTable"></table>
+    </div>
+  </div>
+  <div class="panel">
+    <h3>データの保存と読み込み</h3>
+    <p class="hint" style="white-space:normal;margin-top:0">入力した内容は、このブラウザに自動で保存されます。別のパソコンで使うときや、念のための控えには、ファイルに保存してください。</p>
+    <div class="actions">
+      <button class="btn primary file-only" id="saveJson">データをファイルに保存</button>
+      <button class="btn embed-only" id="copyJson">データをコピー</button>
+      <label class="btn" for="loadJson" style="display:inline-block">ファイルから読み込む</label>
+      <input type="file" id="loadJson" accept=".json,application/json" hidden>
+    </div>
+    <details class="embed-only" style="margin-top:12px"><summary>コピーしたデータを貼り付けて読み込む</summary>
+      <textarea class="pastebox" id="pasteJson" placeholder="ここに貼り付け"></textarea>
+      <button class="btn small" id="pasteJsonBtn">読み込む</button>
+    </details>
+  </div>
+  <div class="grid2">
+    <div class="panel">
+      <h3>移動が終わったら：次の年度へ引き継ぐ</h3>
+      <p class="hint" style="white-space:normal;margin-top:0">移動後の机・いすの数を「いまある数」に、来年度の教室名を「今の教室名」にして、児童数を空にします。翌年はそのまま児童数を入れるだけで使えます。</p>
+      <button class="btn" id="rollBtn">次の年度へ引き継ぐ</button>
+      <div id="rollConfirm"></div>
+    </div>
+    <div class="panel">
+      <h3>最初の状態に戻す</h3>
+      <p class="hint" style="white-space:normal;margin-top:0">入力した内容を消して、昨年度の計画表から作った初期データに戻します。</p>
+      <button class="btn danger" id="resetBtn">初期データに戻す</button>
+      <div id="resetConfirm"></div>
+    </div>
+  </div>
+</section>
+
+</div>
+</main>
+
+<datalist id="floors"><option value="1階"><option value="2階"><option value="3階"><option value="4階"></datalist>
+<datalist id="classnames"></datalist>
+<div id="toastHost" aria-live="polite"></div>
+<div id="printArea"></div>
+<style id="pageStyle"></style>
+
+<script>
+(function(){
+"use strict";
+const LS_KEY='tsukue-isu-planner-v1';
+let EMBED=false; try{EMBED=window.self!==window.top}catch(e){EMBED=true}
+if(EMBED) document.body.classList.add('embed');
+
+const KINDS=['desk','chair'], KN={desk:'机',chair:'いす'};
+const SPECS=['low','high'], SN={low:'低規格',high:'高規格'};
+const MODES=[['auto','学年から自動'],['low','低規格'],['high','高規格'],['mixed','低・高混在'],['empty','使わない（全部出す）'],['keep','対象外（そのまま）']];
+const LOW_H=3;
+const DISTS=[0,1,2,3,4,5,Infinity];
+
+/* ---------- 初期データ（令和７年度末の計画表から） ---------- */
+let seq=0; const uid=()=>'x'+Date.now().toString(36)+(seq++).toString(36);
+function sample(){
+  const R=(floor,cur,spec,d,c,curH,mode,nextH,memo)=>({id:uid(),floor,cur,next:cur,
+    desk:{low:spec==='low'?d:0,high:spec==='high'?d:0},chair:{low:spec==='low'?c:0,high:spec==='high'?c:0},
+    curH:spec==='high'?curH:'',mode:mode||'auto',nextH:nextH||'',kids:'',kidsLow:'',spare:0,tanto:'',memo:memo||''});
+  const K=(floor,cur,memo)=>R(floor,cur,'low',0,0,'','keep','',memo);
+  return {
+    v:1,
+    meta:{
+      title:'令和８年度末・新年度　机いす移動',
+      date:'３月○日（○）○時間目',
+      method:'当日、５年生が運ぶ。',
+      prep:'各担任は事前に、移動先が記された紙（担当が用意）を机といすに貼り付け、廊下に出しておく。',
+      notes:['低学年用（低規格）を４年生の高さにすることはできない。',
+        '12月頃、机椅子の調査依頼が学務課から来るので、忘れずに回答する。',
+        '机の高さは１・２・３年生が低規格で目盛り３、４年生が高規格で４、５・６年生が５。',
+        '机・いすをもって階段を移動するため、上りは中央階段、下りはキリ階段を使わせる（右側通行を徹底する）。',
+        '教員が使う机（児童机）の希望は後日。'].join('\n'),
+      up:'中央階段',down:'キリ階段'
+    },
+    rules:{1:{spec:'low',h:3},2:{spec:'low',h:3},3:{spec:'low',h:3},4:{spec:'high',h:4},5:{spec:'high',h:5},6:{spec:'high',h:5}},
+    rooms:[
+      R('2階','1年1組','low',26,26),R('2階','1年2組','low',25,25),R('2階','1年3組','low',25,25),
+      K('2階','学童保育'),K('2階','OGC'),K('2階','サポートルーム'),
+      R('2階','2年3組','low',25,25),R('2階','2年2組','low',25,25),R('2階','2年1組','low',25,25),
+      K('3階','3階算数','古いタイプ'),K('3階','こども教室'),K('3階','こども教室'),
+      R('3階','3年1組','low',28,28),R('3階','3年2組','low',27,27),R('3階','3年3組','low',27,27),
+      R('3階','4年3組','high',28,28,4),R('3階','4年2組','high',28,28,4),R('3階','4年1組','high',28,28,4),
+      R('4階','6年1組','high',32,32,5,'auto','','旧イングリッシュ'),R('4階','6年2組','high',32,32,5),R('4階','6年3組','high',32,32,5),
+      R('4階','5年3組','high',23,23,5),R('4階','5年2組','high',23,23,5),R('4階','5年1組','high',24,24,5),
+      K('4階','4階算数','古いタイプ'),
+      R('4階','五組（低）','low',8,8,'','low'),
+      R('4階','五組（中）','low',6,6,'','mixed',4,'低・高学年が混在（要確認）'),
+      R('4階','五組（高）','high',8,8,5,'high',5)
+    ],
+    stores:[
+      {id:uid(),name:'保管場所（○○）',floor:'',desk:{low:0,high:0},chair:{low:0,high:0},h:'',memo:'余りの置き場。場所と今ある数を入れる'},
+      {id:uid(),name:'新品',floor:'',desk:{low:0,high:0},chair:{low:0,high:0},h:5,memo:'届いた新しい机・いす'}
+    ],
+    ui:{tab:'kids'}
+  };
+}
+
+/* ---------- 状態 ---------- */
+let S=load()||sample();
+function load(){try{const t=localStorage.getItem(LS_KEY);if(!t)return null;return normalize(JSON.parse(t))}catch(e){return null}}
+let saveTimer=null;
+function save(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{try{localStorage.setItem(LS_KEY,JSON.stringify(S))}catch(e){}},150)}
+function normalize(d){
+  if(!d||!Array.isArray(d.rooms)) throw new Error('形式が違います');
+  const base=sample();
+  const fixInv=o=>({low:int(o&&o.low),high:int(o&&o.high)});
+  return {v:1,
+    meta:Object.assign({},base.meta,d.meta||{}),
+    rules:Object.assign({},base.rules,d.rules||{}),
+    rooms:d.rooms.map(r=>({id:r.id||uid(),floor:str(r.floor),cur:str(r.cur),next:str(r.next),desk:fixInv(r.desk),chair:fixInv(r.chair),
+      curH:r.curH===''||r.curH==null?'':int(r.curH),mode:MODES.some(m=>m[0]===r.mode)?r.mode:'auto',nextH:r.nextH===''||r.nextH==null?'':int(r.nextH),
+      kids:r.kids===''||r.kids==null?'':int(r.kids),kidsLow:r.kidsLow===''||r.kidsLow==null?'':int(r.kidsLow),spare:int(r.spare),tanto:str(r.tanto),memo:str(r.memo)})),
+    stores:(Array.isArray(d.stores)?d.stores:[]).map(s=>({id:s.id||uid(),name:str(s.name),floor:str(s.floor),desk:fixInv(s.desk),chair:fixInv(s.chair),h:s.h===''||s.h==null?'':int(s.h),memo:str(s.memo)})),
+    ui:Object.assign({tab:'kids'},d.ui||{})
+  };
+}
+function int(v){const n=Math.floor(Number(v));return isFinite(n)&&n>0?n:0}
+function str(v){return v==null?'':String(v)}
+function numOrBlank(v){if(v===''||v==null)return '';const n=Math.floor(Number(v));return isFinite(n)&&n>=0?n:''}
+
+/* ---------- 計算 ---------- */
+function z2h(s){return String(s||'').replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0))}
+function gradeOf(name){const s=z2h(name);let m=s.match(/([1-6])\s*年/);if(m)return +m[1];m=s.match(/([一二三四五六])\s*年/);if(m)return '一二三四五六'.indexOf(m[1])+1;return null}
+function floorNum(f){const m=z2h(f).match(/(\d+)/);return m?+m[1]:null}
+function dist(a,b){return (a==null||b==null)?1:Math.abs(a-b)}
+function target(r){
+  let spec,h=null,g=gradeOf(r.next);
+  if(r.mode==='auto'){
+    if(g&&S.rules[g]){spec=S.rules[g].spec;h=spec==='low'?(int(S.rules[g].h)||LOW_H):(int(S.rules[g].h)||5)}
+    else spec='keep';
+  }else spec=r.mode;
+  if(r.mode!=='auto'){ if(spec==='low')h=LOW_H; if(spec==='high'||spec==='mixed')h=int(r.nextH)||5; }
+  return {spec,h,g,auto:r.mode==='auto'};
+}
+function inv(r){return {desk:{low:r.desk.low,high:r.desk.high},chair:{low:r.chair.low,high:r.chair.high}}}
+function needOf(r,t){
+  const have=inv(r);
+  if(t.spec==='keep') return {keep:true,pending:false,need:have};
+  if(t.spec==='empty') return {keep:false,pending:false,need:{desk:{low:0,high:0},chair:{low:0,high:0}}};
+  if(t.spec==='mixed'){
+    if(r.kids===''&&r.kidsLow==='') return {keep:false,pending:true,need:have};
+    const lo=int(r.kidsLow),hi=int(r.kids);
+    return {keep:false,pending:false,need:{desk:{low:lo,high:hi},chair:{low:lo,high:hi}}};
+  }
+  if(r.kids==='') return {keep:false,pending:true,need:have};
+  const n=int(r.kids)+int(r.spare);
+  const o=t.spec==='low'?{low:n,high:0}:{low:0,high:n};
+  return {keep:false,pending:false,need:{desk:{...o},chair:{...o}}};
+}
+function cmp(a,b){for(let i=0;i<a.length;i++){if(a[i]!==b[i])return a[i]<b[i]?-1:1}return 0}
+const NOSTORE={type:'none',id:'none',floorN:null};
+
+function compute(){
+  const items=S.rooms.map((r,i)=>{const t=target(r);return Object.assign({type:'room',id:r.id,r,t,idx:i,floorN:floorNum(r.floor)},needOf(r,t))});
+  const stores=S.stores.map((s,i)=>({type:'store',id:s.id,s,idx:1000+i,floorN:floorNum(s.floor),stock:inv(s)}));
+  const raw=[],short=[];
+  for(const spec of SPECS){
+    const pair=new Set();
+    for(const kind of KINDS){
+      const src=[],def=[];
+      for(const it of items){
+        if(it.keep||it.pending)continue;
+        const d=it.r[kind][spec]-it.need[kind][spec];
+        if(d>0)src.push({it,amt:d});else if(d<0)def.push({it,amt:-d});
+      }
+      const ssrc=stores.filter(st=>st.stock[kind][spec]>0).map(st=>({it:st,amt:st.stock[kind][spec]}));
+      def.sort((a,b)=>b.amt-a.amt||a.it.idx-b.it.idx);
+      const take=(d,pool,md)=>{
+        while(d.amt>0){
+          let best=null,bs=null;
+          for(const s of pool){
+            if(s.amt<=0)continue;
+            const ds=dist(s.it.floorN,d.it.floorN); if(ds>md)continue;
+            const paired=kind==='chair'&&pair.has(s.it.type+s.it.id+'>'+d.it.id);
+            const covers=s.amt>=d.amt;
+            const sc=[ds,paired?0:1,covers?0:1,s.amt,s.it.idx]; // 1部屋で足りればその中で最小、足りなければ小さい余りから使い切る
+            if(!bs||cmp(sc,bs)<0){best=s;bs=sc}
+          }
+          if(!best)break;
+          const n=Math.min(best.amt,d.amt);
+          raw.push({from:best.it,to:d.it,kind,spec,n});
+          best.amt-=n;d.amt-=n;
+          if(best.it.type==='store')best.it.stock[kind][spec]-=n;
+          if(kind==='desk')pair.add(best.it.type+best.it.id+'>'+d.it.id);
+        }
+      };
+      for(const md of DISTS)for(const d of def)take(d,src,md);
+      for(const md of DISTS)for(const d of def)take(d,ssrc,md);
+      for(const d of def)if(d.amt>0)short.push({it:d.it,kind,spec,n:d.amt});
+      for(const s of src)if(s.amt>0){
+        let st=null,bd=Infinity;
+        for(const c of stores){const ds=dist(s.it.floorN,c.floorN);if(ds<bd){bd=ds;st=c}}
+        raw.push({from:s.it,to:st||NOSTORE,kind,spec,n:s.amt});s.amt=0;
+      }
+    }
+  }
+  // まとめる
+  const key=it=>it.type+':'+it.id;
+  const map=new Map();
+  for(const m of raw){
+    const k=key(m.from)+'|'+key(m.to)+'|'+m.spec;
+    let g=map.get(k);
+    if(!g){g={from:m.from,to:m.to,spec:m.spec,desk:0,chair:0};map.set(k,g)}
+    g[m.kind]+=m.n;
+  }
+  const groups=[...map.values()];
+  for(const g of groups){
+    g.hFrom=g.from.type==='room'?g.from.r.curH:g.from.type==='store'?g.from.s.h:'';
+    g.hTo=g.to.type==='room'&&g.spec==='high'?g.to.t.h:null;
+    g.adj=(g.spec==='high'&&g.hTo&&String(g.hFrom)!==String(g.hTo))?g.hTo:null;
+  }
+  const ord=it=>it.type==='room'?it.idx:it.type==='store'?it.idx:9999;
+  groups.sort((a,b)=>ord(a.from)-ord(b.from)||ord(a.to)-ord(b.to)||(a.spec<b.spec?-1:1));
+  // 残高
+  const bal={};
+  for(const kind of KINDS)for(const spec of SPECS){
+    let haveR=0,haveS=0,need=0,sh=0;
+    for(const it of items){if(it.keep)continue;haveR+=it.r[kind][spec];need+=it.need[kind][spec]}
+    for(const st of stores)haveS+=st.s[kind][spec];
+    for(const s of short)if(s.kind===kind&&s.spec===spec)sh+=s.n;
+    bal[kind+'_'+spec]={haveR,haveS,need,short:sh};
+  }
+  return {items,stores,groups,short,bal,raw};
+}
+
+/* ---------- 表示用ヘルパー ---------- */
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function nameOf(it){return it.type==='room'?(it.r.cur||'（名前なし）'):it.type==='store'?(it.s.name||'保管場所'):'保管場所（未設定）'}
+function nextOf(it){return it.type==='room'&&it.r.next&&it.r.next!==it.r.cur?it.r.next:''}
+function floorOf(it){return it.type==='room'?it.r.floor:it.type==='store'?it.s.floor:''}
+function qty(g){const a=[];if(g.desk)a.push('机'+g.desk);if(g.chair)a.push('いす'+g.chair);return a.join('・')}
+function stairs(from,to){
+  const a=from.floorN,b=to.floorN;
+  if(a==null||b==null||a===b)return a!=null&&a===b?'同じ階':'';
+  return a<b?'上り：'+(S.meta.up||'階段'):'下り：'+(S.meta.down||'階段');
+}
+function specChip(t){
+  const lab={low:'低規格',high:'高規格',mixed:'混在',empty:'全部出す',keep:'対象外'}[t.spec];
+  const h=t.spec==='low'||t.spec==='high'?'・高さ'+t.h:t.spec==='mixed'?'・高規格は'+t.h:'';
+  const cls=t.spec==='keep'?'none':t.spec;
+  return `<span class="chip ${cls}">${lab}${h}</span>`;
+}
+function pm(n){if(n===0)return '<span class="pm zero">±0</span>';return n>0?`<span class="pm plus">+${n}</span>`:`<span class="pm minus">−${-n}</span>`}
+function sum(o){return o.low+o.high}
+function toast(msg,undo){
+  const host=document.getElementById('toastHost');host.innerHTML='';
+  const d=document.createElement('div');d.className='toast';d.innerHTML=`<span>${esc(msg)}</span>`;
+  if(undo){const b=document.createElement('button');b.textContent='元に戻す';b.onclick=()=>{undo();d.remove()};d.appendChild(b)}
+  host.appendChild(d);setTimeout(()=>d.remove(),undo?6000:2600);
+}
+function download(name,text,type){
+  const blob=new Blob([text],{type});const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500);
+}
+function copyText(text,okMsg){
+  const fallback=()=>{const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();
+    let ok=false;try{ok=document.execCommand('copy')}catch(e){}ta.remove();toast(ok?okMsg:'コピーできませんでした。ファイル版をお使いください。')};
+  try{navigator.clipboard.writeText(text).then(()=>toast(okMsg),fallback)}catch(e){fallback()}
+}
+
+/* ---------- タブ ---------- */
+function setTab(t){
+  S.ui.tab=t;save();
+  document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===t?'true':'false'));
+  document.querySelectorAll('section[data-sec]').forEach(s=>s.hidden=s.dataset.sec!==t);
+  render();
+}
+document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.tab)));
+
+function render(){
+  renderHeader();
+  const t=S.ui.tab;
+  if(t==='rooms')renderRooms();
+  else if(t==='kids')renderKids();
+  else if(t==='plan')renderPlan();
+  else if(t==='labels')renderLabels();
+  else renderSettings();
+}
+function renderHeader(){
+  document.getElementById('hdrTitle').textContent=S.meta.title||'机いす移動プランナー';
+  document.getElementById('hdrSub').textContent=[S.meta.date&&('日時：'+S.meta.date),S.meta.method&&('移動方法：'+S.meta.method)].filter(Boolean).join('　');
+}
+
+/* ---------- 1 教室 ---------- */
+function opt(list,val){return list.map(([v,l])=>`<option value="${esc(v)}"${String(v)===String(val)?' selected':''}>${esc(l)}</option>`).join('')}
+const HOPTS=[['','—'],[3,'3'],[4,'4'],[5,'5'],[6,'6']];
+function renderRooms(){
+  const el=document.getElementById('roomTable');
+  let h=`<thead><tr><th colspan="6">今年度（いま）</th><th class="gsep" colspan="3">来年度</th><th colspan="2"></th></tr>
+  <tr><th>階</th><th>教室名</th><th class="n">机<br>低規格</th><th class="n">机<br>高規格</th><th class="n">いす<br>低規格</th><th class="n">いす<br>高規格</th><th class="gsep">教室名（使う学級）</th><th>規格</th><th>高規格の高さ</th><th>メモ</th><th></th></tr></thead><tbody>`;
+  S.rooms.forEach((r,i)=>{
+    const t=target(r);
+    const hasHigh=r.desk.high+r.chair.high>0;
+    h+=`<tr data-id="${r.id}">
+      <td><input class="w-floor" data-f="floor" list="floors" value="${esc(r.floor)}" aria-label="階"></td>
+      <td><input class="w-name" data-f="cur" value="${esc(r.cur)}" aria-label="今の教室名"></td>
+      <td><input type="number" min="0" data-f="desk.low" value="${r.desk.low}" aria-label="机 低規格"></td>
+      <td><input type="number" min="0" data-f="desk.high" value="${r.desk.high}" aria-label="机 高規格"></td>
+      <td><input type="number" min="0" data-f="chair.low" value="${r.chair.low}" aria-label="いす 低規格"></td>
+      <td><input type="number" min="0" data-f="chair.high" value="${r.chair.high}" aria-label="いす 高規格"></td>
+      <td class="gsep"><input class="w-name" data-f="next" list="classnames" value="${esc(r.next)}" aria-label="来年度の教室名"></td>
+      <td><select data-f="mode" aria-label="来年度の規格">${opt(MODES,r.mode)}</select><div class="hint" data-hint>${specChip(t)}</div></td>
+      <td><div style="display:flex;gap:4px;align-items:center"><span class="hint">今</span><select data-f="curH" style="min-width:56px" aria-label="今の高さ"${hasHigh?'':' disabled'}>${opt(HOPTS,r.curH)}</select>
+        <span class="hint">→</span><select data-f="nextH" style="min-width:56px" aria-label="来年度の高さ"${(r.mode==='high'||r.mode==='mixed')?'':' disabled'}>${opt(HOPTS,r.mode==='high'||r.mode==='mixed'?(r.nextH||5):(t.spec==='high'?t.h:''))}</select></div></td>
+      <td><input class="w-memo" data-f="memo" value="${esc(r.memo)}" aria-label="メモ"></td>
+      <td><div class="rowbtns"><button class="btn icon" data-act="up" title="上へ" aria-label="上へ"${i===0?' disabled':''}>↑</button><button class="btn icon" data-act="down" title="下へ" aria-label="下へ"${i===S.rooms.length-1?' disabled':''}>↓</button><button class="btn icon danger" data-act="del" title="削除" aria-label="削除">×</button></div></td>
+    </tr>`;
+  });
+  el.innerHTML=h+'</tbody>';
+  const st=document.getElementById('storeTable');
+  let s=`<thead><tr><th>名前</th><th>階</th><th class="n">机<br>低規格</th><th class="n">机<br>高規格</th><th class="n">いす<br>低規格</th><th class="n">いす<br>高規格</th><th>高規格の高さ</th><th>メモ</th><th></th></tr></thead><tbody>`;
+  if(!S.stores.length)s+=`<tr><td colspan="9" class="hint">保管場所がありません。余った机・いすの行き先として、1つは登録してください。</td></tr>`;
+  S.stores.forEach(x=>{
+    s+=`<tr data-sid="${x.id}">
+      <td><input class="w-name" data-f="name" value="${esc(x.name)}" aria-label="名前"></td>
+      <td><input class="w-floor" data-f="floor" list="floors" value="${esc(x.floor)}" aria-label="階"></td>
+      <td><input type="number" min="0" data-f="desk.low" value="${x.desk.low}" aria-label="机 低規格"></td>
+      <td><input type="number" min="0" data-f="desk.high" value="${x.desk.high}" aria-label="机 高規格"></td>
+      <td><input type="number" min="0" data-f="chair.low" value="${x.chair.low}" aria-label="いす 低規格"></td>
+      <td><input type="number" min="0" data-f="chair.high" value="${x.chair.high}" aria-label="いす 高規格"></td>
+      <td><select data-f="h" style="min-width:56px" aria-label="高さ">${opt(HOPTS,x.h)}</select></td>
+      <td><input class="w-memo" data-f="memo" value="${esc(x.memo)}" aria-label="メモ"></td>
+      <td><button class="btn icon danger" data-act="sdel" aria-label="削除">×</button></td></tr>`;
+  });
+  st.innerHTML=s+'</tbody>';
+}
+function setPath(obj,path,val){const p=path.split('.');let o=obj;for(let i=0;i<p.length-1;i++)o=o[p[i]];o[p[p.length-1]]=val}
+const NUMF=new Set(['desk.low','desk.high','chair.low','chair.high']);
+function onEdit(e){
+  const inp=e.target.closest('[data-f]');if(!inp)return;
+  const tr=inp.closest('tr');const f=inp.dataset.f;
+  let obj=null;
+  if(tr.dataset.id)obj=S.rooms.find(r=>r.id===tr.dataset.id);
+  else if(tr.dataset.sid)obj=S.stores.find(r=>r.id===tr.dataset.sid);
+  if(!obj)return;
+  let v=inp.value;
+  if(NUMF.has(f))v=int(v);
+  else if(f==='curH'||f==='nextH'||f==='h')v=v===''?'':int(v);
+  setPath(obj,f,v);save();
+  if(e.type==='change'&&(f==='mode'||f==='next'||NUMF.has(f)||f==='curH'||f==='nextH')&&tr.dataset.id){
+    // 規格・高さ欄を更新
+    const keep=document.activeElement&&document.activeElement.dataset?{f:document.activeElement.dataset.f,id:tr.dataset.id}:null;
+    renderRooms();
+    if(keep&&keep.f){const n=document.querySelector(`#roomTable tr[data-id="${keep.id}"] [data-f="${keep.f}"]`);if(n)n.focus()}
+  }
+}
+['input','change'].forEach(ev=>{document.getElementById('roomTable').addEventListener(ev,onEdit);document.getElementById('storeTable').addEventListener(ev,onEdit)});
+document.getElementById('roomTable').addEventListener('click',e=>{
+  const b=e.target.closest('[data-act]');if(!b)return;
+  const id=b.closest('tr').dataset.id;const i=S.rooms.findIndex(r=>r.id===id);
+  if(b.dataset.act==='up'&&i>0){[S.rooms[i-1],S.rooms[i]]=[S.rooms[i],S.rooms[i-1]]}
+  else if(b.dataset.act==='down'&&i<S.rooms.length-1){[S.rooms[i+1],S.rooms[i]]=[S.rooms[i],S.rooms[i+1]]}
+  else if(b.dataset.act==='del'){const [gone]=S.rooms.splice(i,1);save();renderRooms();toast(`「${gone.cur||'教室'}」を削除しました`,()=>{S.rooms.splice(i,0,gone);save();renderRooms()});return}
+  save();renderRooms();
+});
+document.getElementById('storeTable').addEventListener('click',e=>{
+  const b=e.target.closest('[data-act="sdel"]');if(!b)return;
+  const id=b.closest('tr').dataset.sid;const i=S.stores.findIndex(r=>r.id===id);
+  const [gone]=S.stores.splice(i,1);save();renderRooms();toast(`「${gone.name||'保管場所'}」を削除しました`,()=>{S.stores.splice(i,0,gone);save();renderRooms()});
+});
+document.getElementById('addRoom').onclick=()=>{
+  const last=S.rooms[S.rooms.length-1];
+  S.rooms.push({id:uid(),floor:last?last.floor:'',cur:'',next:'',desk:{low:0,high:0},chair:{low:0,high:0},curH:'',mode:'auto',nextH:'',kids:'',kidsLow:'',spare:0,tanto:'',memo:''});
+  save();renderRooms();const rows=document.querySelectorAll('#roomTable tbody tr');const n=rows[rows.length-1].querySelector('[data-f="cur"]');n&&n.focus();
+};
+document.getElementById('addStore').onclick=()=>{S.stores.push({id:uid(),name:'',floor:'',desk:{low:0,high:0},chair:{low:0,high:0},h:'',memo:''});save();renderRooms()};
+
+/* ---------- 2 児童数 ---------- */
+function kidStatus(r){
+  const t=target(r);const n=needOf(r,t);
+  if(n.pending)return `<div class="muted">いま　机 ${sum(r.desk)}・いす ${sum(r.chair)}</div><div class="muted">児童数を入れると過不足が出ます</div>`;
+  const dh=sum(r.desk),ch=sum(r.chair),dn=sum(n.need.desk),cn=sum(n.need.chair);
+  let wrong='';
+  if(t.spec==='low'&&(r.desk.high+r.chair.high))wrong='<div class="muted">高規格の分は運び出します</div>';
+  if(t.spec==='high'&&(r.desk.low+r.chair.low))wrong='<div class="muted">低規格の分は運び出します</div>';
+  return `<div>机　${dh} → ${dn}　${pm(dh-dn)}</div><div>いす ${ch} → ${cn}　${pm(ch-cn)}</div>${wrong}`;
+}
+function renderKids(){
+  const list=document.getElementById('kidsList');
+  const target_rooms=S.rooms.filter(r=>{const t=target(r);return t.spec==='low'||t.spec==='high'||t.spec==='mixed'});
+  const done=target_rooms.filter(r=>!needOf(r,target(r)).pending).length;
+  document.getElementById('kidsProgress').innerHTML=`<span>入力済み <b class="num">${done}</b> / ${target_rooms.length} 学級</span><span class="bar"><i style="width:${target_rooms.length?done/target_rooms.length*100:0}%"></i></span>`;
+  let h='',curF=null,open=false;
+  const others=[];
+  S.rooms.forEach(r=>{
+    const t=target(r);
+    if(t.spec==='keep'||t.spec==='empty'){others.push(r);return}
+    if(r.floor!==curF){if(open)h+='</div>';h+=`<div class="kfloor"><h3>${esc(r.floor||'階の指定なし')}</h3>`;curF=r.floor;open=true}
+    const n=needOf(r,t);
+    const ins=t.spec==='mixed'
+      ?`<label>低規格<input type="number" min="0" inputmode="numeric" data-k="kidsLow" value="${r.kidsLow}" aria-label="${esc(r.next)} 低規格の人数"></label><label>高規格<input type="number" min="0" inputmode="numeric" data-k="kids" value="${r.kids}" aria-label="${esc(r.next)} 高規格の人数"></label>`
+      :`<label>児童数<input type="number" min="0" inputmode="numeric" data-k="kids" value="${r.kids}" aria-label="${esc(r.next)} の児童数"></label><label>予備<input class="sm" type="number" min="0" inputmode="numeric" data-k="spare" value="${r.spare||0}" aria-label="${esc(r.next)} の予備"></label>`;
+    h+=`<div class="krow${n.pending?' pending':''}" data-id="${r.id}">
+      <div class="room"><b>${esc(r.next||'（来年度の教室名なし）')}</b><small>${r.next!==r.cur?'いまの '+esc(r.cur)+' の部屋':'同じ部屋'}</small></div>
+      <div>${specChip(t)}</div>
+      <div class="kin">${ins}</div>
+      <div class="kstat" data-stat>${kidStatus(r)}</div></div>`;
+  });
+  if(open)h+='</div>';
+  if(others.length)h+=`<p class="others">対象外・全部出す教室：${others.map(r=>esc(r.cur)+(r.mode==='empty'?'（全部出す）':'')).join('、')}<br>規格を変えるときは「1 教室と机・いす」で設定します。</p>`;
+  list.innerHTML=h;
+}
+document.getElementById('kidsList').addEventListener('input',e=>{
+  const inp=e.target.closest('[data-k]');if(!inp)return;
+  const row=inp.closest('.krow');const r=S.rooms.find(x=>x.id===row.dataset.id);if(!r)return;
+  const k=inp.dataset.k;
+  r[k]=k==='spare'?int(inp.value):numOrBlank(inp.value);
+  save();
+  row.querySelector('[data-stat]').innerHTML=kidStatus(r);
+  row.classList.toggle('pending',needOf(r,target(r)).pending);
+  const tr=S.rooms.filter(x=>{const t=target(x);return t.spec==='low'||t.spec==='high'||t.spec==='mixed'});
+  const done=tr.filter(x=>!needOf(x,target(x)).pending).length;
+  document.getElementById('kidsProgress').innerHTML=`<span>入力済み <b class="num">${done}</b> / ${tr.length} 学級</span><span class="bar"><i style="width:${tr.length?done/tr.length*100:0}%"></i></span>`;
+});
+document.getElementById('kidsList').addEventListener('keydown',e=>{
+  if(e.key!=='Enter')return;const inp=e.target.closest('[data-k]');if(!inp)return;
+  e.preventDefault();const all=[...document.querySelectorAll('#kidsList [data-k="kids"],#kidsList [data-k="kidsLow"]')];
+  const i=all.indexOf(inp);if(i>=0&&all[i+1]){all[i+1].focus();all[i+1].select()}
+});
+document.getElementById('bulkSpareBtn').onclick=()=>{const v=int(document.getElementById('bulkSpare').value);S.rooms.forEach(r=>r.spare=v);save();renderKids();toast(`全学級の予備を${v}台にしました`)};
+
+/* ---------- 3 計画 ---------- */
+function roomRemarks(C){
+  const rem=new Map();
+  const add=(id,t)=>{if(!rem.has(id))rem.set(id,[]);rem.get(id).push(t)};
+  const both=new Map();
+  for(const g of C.groups){for(const it of [g.from,g.to]){if(it.type!=='room')continue;if(!both.has(it.id))both.set(it.id,new Set());both.get(it.id).add(g.spec)}}
+  const sp=(it,g)=>both.get(it.id)&&both.get(it.id).size>1?SN[g.spec]+'の':'';
+  for(const it of C.items){
+    if(it.keep||it.pending)continue;
+    const t=it.t;
+    if((t.spec==='high'||t.spec==='mixed')&&it.r.curH&&t.h&&String(it.r.curH)!==String(t.h)){
+      const stay=Math.min(it.r.desk.high,it.need.desk.high)+Math.min(it.r.chair.high,it.need.chair.high);
+      if(stay>0)add(it.id,`部屋に残す机・いすの高さを${it.r.curH}→${t.h}に`);
+    }
+  }
+  for(const g of C.groups){
+    const adj=g.adj?`（高さを${g.adj}に）`:'';
+    if(g.from.type==='room')add(g.from.id,`${sp(g.from,g)}${qty(g)}を${nameOf(g.to)}へ${adj}`);
+    if(g.to.type==='room')add(g.to.id,`${nameOf(g.from)}から${sp(g.to,g)}${qty(g)}${adj}`);
+  }
+  const sm=new Map();
+  for(const s of C.short){const k=s.it.id+'|'+s.spec;if(!sm.has(k))sm.set(k,{it:s.it,spec:s.spec,desk:0,chair:0});sm.get(k)[s.kind]+=s.n}
+  for(const v of sm.values())add(v.it.id,`${sp(v.it,v)}${qty(v)}が不足（要手配）`);
+  return rem;
+}
+function planRows(C){
+  const rem=roomRemarks(C);
+  return C.items.map(it=>{
+    const r=it.r,t=it.t;
+    const hd=sum(r.desk),hc=sum(r.chair);
+    const managed=!it.keep;
+    const nd=it.pending||!managed?null:sum(it.need.desk),nc=it.pending||!managed?null:sum(it.need.chair);
+    const specTxt={low:'低規格',high:'高規格',mixed:'混在',empty:'使わない',keep:''}[t.spec];
+    const hTxt=t.spec==='low'||t.spec==='high'?String(t.h):t.spec==='mixed'?`3・${t.h}`:'';
+    return {it,floor:r.floor,cur:r.cur,next:r.next,spec:specTxt,h:hTxt,hd,hc,nd,nc,
+      dd:nd==null?null:hd-nd,dc:nc==null?null:hc-nc,
+      rem:(it.pending?['児童数未入力']:[]).concat(rem.get(it.id)||[]).concat(r.memo?[r.memo]:[]).join('\n'),tanto:r.tanto,pending:it.pending,managed};
+  });
+}
+function renderPlan(){
+  const C=compute();
+  const rows=planRows(C);
+  const pend=C.items.filter(i=>i.pending);
+  const warn=[];
+  if(pend.length)warn.push(`<b>児童数が未入力の学級が${pend.length}あります</b>（${pend.map(i=>esc(i.r.next||i.r.cur)).join('、')}）。未入力の部屋の机・いすは動かさない前提で計算しています。`);
+  if(!S.stores.length)warn.push('<b>保管場所が登録されていません。</b>余った机・いすの行き先が「保管場所（未設定）」になります。');
+  document.getElementById('planWarn').innerHTML=warn.map(w=>`<p class="note">${w}</p>`).join('');
+  let mvD=0,mvC=0,adjN=0;for(const g of C.groups){mvD+=g.desk;mvC+=g.chair;if(g.adj)adjN+=g.desk+g.chair}
+  let shD=0,shC=0;for(const s of C.short){if(s.kind==='desk')shD+=s.n;else shC+=s.n}
+  document.getElementById('planStats').innerHTML=
+    `<div class="stat"><div class="k">運ぶ机</div><div class="v">${mvD}<small>台</small></div></div>
+     <div class="stat"><div class="k">運ぶいす</div><div class="v">${mvC}<small>脚</small></div></div>
+     <div class="stat"><div class="k">高さの調整</div><div class="v">${adjN}<small>台・脚</small></div></div>
+     <div class="stat${shD+shC?' bad':''}"><div class="k">足りない（机・いす）</div><div class="v">${shD}<small>台</small>・${shC}<small>脚</small></div></div>`;
+  // 規格ごと
+  let b=`<table><thead><tr><th></th><th class="n">教室にある</th><th class="n">保管・新品</th><th class="n">必要</th><th class="n">足りない</th></tr></thead><tbody>`;
+  for(const spec of SPECS)for(const kind of KINDS){const x=C.bal[kind+'_'+spec];
+    b+=`<tr><td><span class="chip ${spec}">${SN[spec]}</span> ${KN[kind]}</td><td class="n">${x.haveR}</td><td class="n">${x.haveS}</td><td class="n">${x.need}</td><td class="n">${x.short?`<span class="pm minus">${x.short}</span>`:'<span class="pm zero">0</span>'}</td></tr>`}
+  b+=`</tbody></table><p class="hint" style="white-space:normal">「必要」は児童数を入れた学級の合計と、未入力の学級にいまある数です。12月の学務課の調査にもこの表が使えます。</p>`;
+  document.getElementById('planBalance').innerHTML=b;
+  // 不足
+  if(!C.short.length)document.getElementById('planShort').innerHTML='<p class="hint" style="white-space:normal">足りない机・いすはありません。</p>';
+  else{
+    const sm=new Map();for(const s of C.short){const k=s.it.id+'|'+s.spec;if(!sm.has(k))sm.set(k,{it:s.it,spec:s.spec,desk:0,chair:0});sm.get(k)[s.kind]+=s.n}
+    document.getElementById('planShort').innerHTML=`<ul class="short">${[...sm.values()].map(v=>`<li><b>${esc(v.it.r.next||v.it.r.cur)}</b>（${esc(v.it.r.cur)}の部屋）　<span class="chip ${v.spec}">${SN[v.spec]}</span>　${qty(v)}</li>`).join('')}</ul><p class="hint" style="white-space:normal">新品の手配や他校からの借用を検討してください。届いたら「1 教室と机・いす」の保管場所・新品に数を入れると、計画に組み込まれます。</p>`;
+  }
+  // 移動カード
+  const bySrc=new Map();for(const g of C.groups){const k=g.from.type+g.from.id;if(!bySrc.has(k))bySrc.set(k,[]);bySrc.get(k).push(g)}
+  let mh='';
+  if(!C.groups.length)mh='<p class="hint" style="white-space:normal">いまのところ運ぶ机・いすはありません。児童数を入れると、ここに移動の指示が出ます。</p>';
+  for(const gs of bySrc.values()){
+    const f=gs[0].from;let td=0,tc=0;gs.forEach(g=>{td+=g.desk;tc+=g.chair});
+    mh+=`<article class="mcard"><header><b>${esc(nameOf(f))}</b><small>${esc(floorOf(f))}${nextOf(f)?'・来年度 '+esc(nextOf(f)):''}　計 ${qty({desk:td,chair:tc})}</small></header><ul>`;
+    for(const g of gs){
+      const st=stairs(g.from,g.to);
+      mh+=`<li><span class="to">→ ${esc(nameOf(g.to))}${nextOf(g.to)?` <small>（来年度 ${esc(nextOf(g.to))}）</small>`:''}</span><span class="qty">${qty(g)}</span>
+        <span class="meta"><span class="chip ${g.spec}">${SN[g.spec]}</span>${esc(floorOf(g.to))}${st?'・'+esc(st):''}${g.adj?`<span class="adj">高さを${g.adj}に調整</span>`:''}</span></li>`;
+    }
+    mh+='</ul></article>';
+  }
+  document.getElementById('planMoves').innerHTML=mh;
+  // 一覧表
+  let th=`<thead><tr><th>階</th><th>旧教室</th><th>新教室</th><th>規格</th><th class="n">高さ</th><th class="n">現在の机</th><th class="n">現在のいす</th><th class="n">必要な机</th><th class="n">必要ないす</th><th class="n">机<br>過不足</th><th class="n">いす<br>過不足</th><th>移動・備考</th><th>担当</th></tr></thead><tbody>`;
+  const spans=floorSpans(rows);
+  let T={hd:0,hc:0,nd:0,nc:0};
+  rows.forEach((x,i)=>{
+    if(x.managed){T.hd+=x.hd;T.hc+=x.hc;if(x.nd!=null){T.nd+=x.nd;T.nc+=x.nc}}
+    th+=`<tr>${spans[i]?`<td class="fl" rowspan="${spans[i]}">${esc(x.floor)}</td>`:''}<td>${esc(x.cur)}</td><td class="newname${x.next!==x.cur?' changed':''}">${esc(x.next)}</td><td>${x.spec?`<span class="chip ${x.it.t.spec}">${x.spec}</span>`:''}</td><td class="n">${x.h}</td>
+      <td class="n">${x.managed?x.hd:''}</td><td class="n">${x.managed?x.hc:''}</td><td class="n">${x.nd==null?(x.pending?'<span class="hint">未入力</span>':''):x.nd}</td><td class="n">${x.nc==null?'':x.nc}</td>
+      <td class="n">${x.dd==null?'':pm(x.dd)}</td><td class="n">${x.dc==null?'':pm(x.dc)}</td><td class="rem">${esc(x.rem)}</td>
+      <td><input data-tanto="${x.it.id}" value="${esc(x.tanto)}" aria-label="${esc(x.cur)} の担当"></td></tr>`;
+  });
+  th+=`<tr class="total"><td colspan="5">計</td><td class="n">${T.hd}</td><td class="n">${T.hc}</td><td class="n">${T.nd}</td><td class="n">${T.nc}</td><td colspan="4"></td></tr></tbody>`;
+  document.getElementById('planTable').innerHTML=th;
+}
+function floorSpans(rows){const sp=new Array(rows.length).fill(0);let i=0;while(i<rows.length){let j=i;while(j+1<rows.length&&rows[j+1].floor===rows[i].floor)j++;sp[i]=j-i+1;i=j+1}return sp}
+document.getElementById('planTable').addEventListener('input',e=>{const id=e.target.dataset.tanto;if(!id)return;const r=S.rooms.find(x=>x.id===id);if(r){r.tanto=e.target.value;save()}});
+
+function tableData(){
+  const C=compute();const rows=planRows(C);
+  const head=['階','旧教室','新教室','規格','高さ','現在の机の数','現在のいすの数','来年度必要な机の数','来年度必要ないすの数','机過不足','いす過不足','移動・備考','担当'];
+  const body=rows.map(x=>[x.floor,x.cur,x.next,x.spec,x.h,x.managed?x.hd:'',x.managed?x.hc:'',x.nd==null?'':x.nd,x.nc==null?'':x.nc,x.dd==null?'':x.dd,x.dc==null?'':x.dc,x.rem,x.tanto]);
+  return {C,head,body};
+}
+document.getElementById('csvPlan').onclick=()=>{
+  const {head,body}=tableData();
+  const q=v=>{const s=String(v);return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
+  const csv='﻿'+[head,...body].map(r=>r.map(q).join(',')).join('\r\n');
+  download((S.meta.title||'机いす移動計画').replace(/[\\/:*?"<>|\s]+/g,'_')+'.csv',csv,'text/csv');
+};
+document.getElementById('copyPlan').onclick=()=>{
+  const {head,body}=tableData();
+  const q=v=>{const s=String(v);return /[\t\n"]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
+  copyText([head,...body].map(r=>r.map(q).join('\t')).join('\n'),'表をコピーしました。Excelに貼り付けてください');
+};
+document.getElementById('printPlan').onclick=()=>{
+  const {C,head,body}=tableData();
+  const rows=planRows(C);const spans=floorSpans(rows);
+  let h=`<div class="pp"><h1>${esc(S.meta.title)}</h1><table class="meta">`;
+  [['日時',S.meta.date],['移動方法',S.meta.method],['準備',S.meta.prep]].forEach(([k,v])=>{if(v)h+=`<tr><th>${k}</th><td>${esc(v)}</td></tr>`});
+  h+=`</table><table class="grid" style="margin-top:8pt"><thead><tr>${head.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>`;
+  body.forEach((r,i)=>{h+='<tr>'+r.map((v,j)=>{if(j===0)return spans[i]?`<td rowspan="${spans[i]}">${esc(v)}</td>`:'';return `<td${j===11?' class="rem"':''}>${esc(v)}</td>`}).join('')+'</tr>'});
+  h+='</tbody></table>';
+  const bySrc=new Map();for(const g of C.groups){const k=g.from.type+g.from.id;if(!bySrc.has(k))bySrc.set(k,[]);bySrc.get(k).push(g)}
+  if(bySrc.size){h+='<h2>移動の指示（運び出す教室ごと）</h2><div class="mlist">';
+    for(const gs of bySrc.values()){h+=`<div><b>${esc(nameOf(gs[0].from))}</b>（${esc(floorOf(gs[0].from))}）<br>`+gs.map(g=>`→ ${esc(nameOf(g.to))}${nextOf(g.to)?'（来年度'+esc(nextOf(g.to))+'）':''}　${qty(g)}　${SN[g.spec]}${g.adj?'　高さを'+g.adj+'に':''}${stairs(g.from,g.to)?'　'+esc(stairs(g.from,g.to)):''}`).join('<br>')+'</div>'}
+    h+='</div>'}
+  if(S.meta.notes)h+=`<h2>その他</h2><ul class="notes">${S.meta.notes.split('\n').filter(s=>s.trim()).map(s=>`<li>${esc(s)}</li>`).join('')}</ul>`;
+  doPrint(h+'</div>','@page{size:A4 landscape;margin:10mm}');
+};
+function doPrint(html,page){
+  document.getElementById('printArea').innerHTML=html;
+  document.getElementById('pageStyle').textContent='@media print{'+page+'}';
+  setTimeout(()=>window.print(),50);
+}
+
+/* ---------- 4 貼り紙 ---------- */
+function labelList(C,from,mode){
+  const out=[];
+  for(const g of C.groups){
+    const k=g.from.type+':'+g.from.id;if(from&&from!==k)continue;
+    for(const kind of KINDS){
+      const n=g[kind];if(!n)continue;
+      const L={dest:nameOf(g.to),next:nextOf(g.to),toFloor:floorOf(g.to),what:KN[kind],spec:g.spec,adj:g.adj,from:nameOf(g.from),fromFloor:floorOf(g.from),st:stairs(g.from,g.to)};
+      if(mode==='group')out.push(Object.assign({x:n},L));else for(let i=0;i<n;i++)out.push(L);
+    }
+  }
+  return out;
+}
+function lblHTML(L,cls){
+  return `<div class="${cls}"><div class="t">移動先</div><div class="dest">${esc(L.dest)}</div>${L.next?`<div class="nx">来年度 ${esc(L.next)}${L.toFloor?'（'+esc(L.toFloor)+'）':''}</div>`:L.toFloor?`<div class="nx">${esc(L.toFloor)}</div>`:''}
+    <div class="what">${esc(L.what)}<span class="chip ${L.spec}">${SN[L.spec]}</span>${L.x?`<span class="x">× ${L.x}</span>`:''}${L.adj?`<span class="adj">高さを${L.adj}に</span>`:''}</div>
+    <div class="from">移動元：${esc(L.from)}${L.fromFloor?'（'+esc(L.fromFloor)+'）':''}${L.st?'　'+esc(L.st):''}</div></div>`;
+}
+function renderLabels(){
+  const C=compute();
+  const sel=document.getElementById('lblFrom');const prev=sel.value;
+  const srcs=new Map();for(const g of C.groups){const k=g.from.type+':'+g.from.id;if(!srcs.has(k))srcs.set(k,{name:nameOf(g.from),n:0});srcs.get(k).n+=g.desk+g.chair}
+  sel.innerHTML='<option value="">すべて</option>'+[...srcs].map(([k,v])=>`<option value="${esc(k)}">${esc(v.name)}（${v.n}）</option>`).join('');
+  if([...srcs.keys()].includes(prev))sel.value=prev;
+  const list=labelList(C,sel.value,document.getElementById('lblMode').value);
+  document.getElementById('lblCount').textContent=`全 ${list.length} 枚`+(list.length?`（A4 ${Math.ceil(list.length/+document.getElementById('lblSize').value)} ページ）`:'');
+  const shown=list.slice(0,60);
+  document.getElementById('lblGrid').innerHTML=list.length?shown.map(L=>lblHTML(L,'lbl')).join('')+(list.length>60?`<p class="hint" style="grid-column:1/-1">画面には最初の60枚だけ表示しています。印刷ではすべて出ます。</p>`:''):'<p class="hint" style="grid-column:1/-1;white-space:normal">運ぶ机・いすがないので、貼り紙はありません。</p>';
+}
+['lblFrom','lblSize','lblMode'].forEach(id=>document.getElementById(id).addEventListener('change',renderLabels));
+document.getElementById('printLabels').onclick=()=>{
+  const C=compute();const n=+document.getElementById('lblSize').value;
+  const list=labelList(C,document.getElementById('lblFrom').value,document.getElementById('lblMode').value);
+  if(!list.length){toast('印刷する貼り紙がありません');return}
+  let h='';for(let i=0;i<list.length;i+=n){h+=`<div class="lpage n${n}">`+list.slice(i,i+n).map(L=>lblHTML(L,'plbl')).join('')+'</div>'}
+  doPrint(h,'@page{size:A4 portrait;margin:10mm}');
+};
+
+/* ---------- 5 設定 ---------- */
+function renderSettings(){
+  document.querySelectorAll('[data-meta]').forEach(el=>{if(document.activeElement!==el)el.value=S.meta[el.dataset.meta]||''});
+  let h='<thead><tr><th>学年</th><th>規格</th><th>高さ（目盛り）</th></tr></thead><tbody>';
+  for(let g=1;g<=6;g++){const r=S.rules[g]||{spec:'low',h:3};
+    h+=`<tr data-g="${g}"><td>${g}年生</td><td><select data-r="spec" aria-label="${g}年生の規格">${opt([['low','低規格'],['high','高規格']],r.spec)}</select></td><td><input type="number" min="1" max="8" data-r="h" value="${r.h}" aria-label="${g}年生の高さ"></td></tr>`}
+  document.getElementById('rulesTable').innerHTML=h+'</tbody>';
+  document.getElementById('rollConfirm').innerHTML='';document.getElementById('resetConfirm').innerHTML='';
+}
+document.querySelectorAll('[data-meta]').forEach(el=>el.addEventListener('input',()=>{S.meta[el.dataset.meta]=el.value;save();renderHeader()}));
+document.getElementById('rulesTable').addEventListener('change',e=>{
+  const el=e.target.closest('[data-r]');if(!el)return;const g=el.closest('tr').dataset.g;
+  S.rules[g]=Object.assign({},S.rules[g]);S.rules[g][el.dataset.r]=el.dataset.r==='h'?(int(el.value)||3):el.value;save();
+});
+document.getElementById('saveJson').onclick=()=>{
+  const d=new Date();const ymd=d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');
+  download(`机いす移動データ_${ymd}.json`,JSON.stringify(S,null,1),'application/json');toast('ファイルに保存しました');
+};
+document.getElementById('copyJson').onclick=()=>copyText(JSON.stringify(S),'データをコピーしました');
+function importText(t){try{S=normalize(JSON.parse(t));save();setTab(S.ui.tab||'kids');toast('データを読み込みました')}catch(e){toast('読み込めませんでした：'+(e.message||'形式が違います'))}}
+document.getElementById('loadJson').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>importText(rd.result);rd.readAsText(f);e.target.value=''});
+document.getElementById('pasteJsonBtn').onclick=()=>importText(document.getElementById('pasteJson').value);
+function askConfirm(hostId,msg,yesLabel,onYes){
+  const host=document.getElementById(hostId);
+  host.innerHTML=`<div class="confirm"><p>${msg}</p><div class="actions"><button class="btn danger" data-yes>${yesLabel}</button><button class="btn" data-no>やめる</button></div></div>`;
+  host.querySelector('[data-yes]').onclick=()=>{host.innerHTML='';onYes()};
+  host.querySelector('[data-no]').onclick=()=>{host.innerHTML=''};
+}
+document.getElementById('resetBtn').onclick=()=>askConfirm('resetConfirm','入力した内容がすべて消えます。必要なら先に「データをファイルに保存」してください。','初期データに戻す',()=>{const tab=S.ui.tab;S=sample();S.ui.tab=tab;save();render();toast('初期データに戻しました')});
+document.getElementById('rollBtn').onclick=()=>{
+  const C=compute();const pend=C.items.filter(i=>i.pending).length;
+  askConfirm('rollConfirm',`移動後の数を「いまある数」にして、来年度の教室名を今の教室名に書き換えます。${pend?`<b>児童数が未入力の学級が${pend}あります。</b>`:''}先に「データをファイルに保存」しておくと、元に戻せます。`,'引き継ぐ',()=>{
+    const after=new Map();
+    for(const it of C.items)after.set('room:'+it.id,inv(it.r));
+    for(const st of S.stores)after.set('store:'+st.id,inv(st));
+    for(const m of C.raw){
+      const f=after.get(m.from.type+':'+m.from.id),t=after.get(m.to.type+':'+m.to.id);
+      if(f)f[m.kind][m.spec]-=m.n;if(t)t[m.kind][m.spec]+=m.n;
+    }
+    for(const it of C.items){const r=it.r,a=after.get('room:'+r.id);r.desk=a.desk;r.chair=a.chair;
+      if(!it.keep&&!it.pending&&(it.t.spec==='high'||it.t.spec==='mixed'))r.curH=it.t.h;
+      if(r.desk.high+r.chair.high===0)r.curH='';
+      if(r.next)r.cur=r.next;r.kids='';r.kidsLow='';r.tanto='';}
+    for(const st of S.stores){const a=after.get('store:'+st.id);st.desk=a.desk;st.chair=a.chair}
+    S.meta.title=S.meta.title.replace(/令和([0-9０-９]+)/,(m,n)=>'令和'+(+z2h(n)+1));
+    save();setTab('rooms');toast('次の年度へ引き継ぎました。来年度の教室名を入れてください');
+  });
+};
+
+/* ---------- 起動 ---------- */
+const cn=[];for(let g=1;g<=6;g++)for(let c=1;c<=4;c++)cn.push(`${g}年${c}組`);cn.push('五組（低）','五組（中）','五組（高）');
+document.getElementById('classnames').innerHTML=cn.map(n=>`<option value="${n}">`).join('');
+setTab(S.ui.tab||'kids');
+})();
+</script>
+</body>
+</html>
